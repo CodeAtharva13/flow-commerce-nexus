@@ -37,7 +37,7 @@ const CustomerForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isEditMode = id !== 'new';
+  const isEditMode = id !== undefined && id !== 'new';
 
   // Set up form with react-hook-form and zod validation
   const form = useForm<CustomerFormValues>({
@@ -88,7 +88,7 @@ const CustomerForm = () => {
         await updateCustomer(id as string, values);
         toast.success('Customer updated successfully');
       } else {
-        // Fix: Pass all required fields directly to ensure they're not optional
+        // Pass all required fields directly
         await createCustomer({
           name: values.name,
           email: values.email,
@@ -146,7 +146,7 @@ const CustomerForm = () => {
         </p>
       </div>
 
-      <div className="form-container">
+      <div className="form-container max-w-2xl mx-auto">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField

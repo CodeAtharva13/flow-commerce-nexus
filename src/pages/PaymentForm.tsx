@@ -5,14 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Skeleton } from '../components/ui/skeleton';
 import { toast } from 'sonner';
-import { ChevronLeft, CreditCard, Loader2 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import {
   Form,
   FormControl,
@@ -21,35 +14,58 @@ import {
   FormLabel,
   FormMessage,
 } from '../components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { Card, CardContent } from '../components/ui/card';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Order } from '../models/types';
-import { getOrders, createPayment } from '../services/mockData';
+import { getOrders, getOrder, createPayment, formatCurrency } from '../services/mockData';
 
+// Define validation schema
 const paymentSchema = z.object({
   order_id: z.string().min(1, { message: 'Order is required' }),
-  method: z.enum(['credit_card', 'paypal', 'bank_transfer', 'cash']),
-  amount: z.number().min(0.01, { message: 'Amount must be greater than 0' }),
-  transaction_id: z.string().min(3, { message: 'Transaction ID is required' }),
-  status: z.enum(['pending', 'completed', 'failed', 'refunded']),
-  card_details: z.object({
-    last4: z.string().length(4, { message: 'Last 4 digits required' }).optional(),
-    expiry: z.string().optional(),
-    brand: z.string().optional()
-  }).optional()
+  amount: z.coerce.number().positive({ message: 'Amount must be positive' }),
+  method: z.enum(['credit_card', 'paypal', 'bank_transfer', 'cash'], { message: 'Payment method is required' }),
+  status: z.enum(['pending', 'completed', 'failed', 'refunded'], { message: 'Status is required' }),
+  transaction_id: z.string().optional(),
+  // Card details are optional
+  card_last4: z.string().optional(),
+  card_expiry: z.string().optional(),
+  card_brand: z.string().optional(),
 });
 
 type PaymentFormValues = z.infer<typeof paymentSchema>;
 
 const PaymentForm = () => {
-  const { orderId } = useParams<{ orderId: string }>();
+  const { id, orderId } = useParams<{ id: string; orderId: string }>();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  const form = useForm<PaymentFormValues>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      order_id: orderId || '',
+      amount: 0,
+      method: 'credit_card',
+      status: 'pending',
+      transaction_id: '',
+      card_last4: '',
+      card_expiry: '',
+      card_brand: '',
+    },
+  });
+
+  const showCardFields = form.watch('method') === 'credit_card';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -57,50 +73,34 @@ const PaymentForm = () => {
       try {
         const ordersData = await getOrders();
         setOrders(ordersData);
-        
+
         if (orderId) {
-          const order = ordersData.find(o => o.id === orderId);
-          if (order) {
-            setSelectedOrder(order);
-            form.setValue('order_id', order.id);
-            form.setValue('amount', order.total_amount);
+          const orderData = await getOrder(orderId);
+          if (orderData) {
+            setSelectedOrder(orderData);
+            form.setValue('order_id', orderData.id);
+            form.setValue('amount', orderData.total_amount);
           }
         }
       } catch (error) {
-        toast.error('Failed to load orders');
+        toast.error('Failed to load data');
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
-  }, [orderId]);
+  }, [orderId, form]);
 
-  const form = useForm<PaymentFormValues>({
-    resolver: zodResolver(paymentSchema),
-    defaultValues: {
-      order_id: orderId || '',
-      method: 'credit_card',
-      amount: 0,
-      transaction_id: `txn_${Math.random().toString(36).substring(2, 10)}`,
-      status: 'pending',
-      card_details: {
-        last4: '',
-        expiry: '',
-        brand: ''
+  const handleOrderChange = async (orderId: string) => {
+    try {
+      const orderData = await getOrder(orderId);
+      if (orderData) {
+        setSelectedOrder(orderData);
+        form.setValue('amount', orderData.total_amount);
       }
-    },
-  });
-
-  // Watch the payment method to conditionally show card details
-  const paymentMethod = form.watch('method');
-
-  // Handle order selection
-  const handleOrderChange = (value: string) => {
-    const order = orders.find(o => o.id === value);
-    if (order) {
-      setSelectedOrder(order);
-      form.setValue('amount', order.total_amount);
+    } catch (error) {
+      console.error('Error fetching order details:', error);
     }
   };
 
@@ -108,20 +108,30 @@ const PaymentForm = () => {
     setIsSaving(true);
     
     try {
-      // Clean up card details if not using credit card
-      if (values.method !== 'credit_card') {
-        delete values.card_details;
-      }
-      
+      // Prepare card details if payment method is credit card
+      const cardDetails = showCardFields
+        ? {
+            last4: values.card_last4 || '',
+            expiry: values.card_expiry || '',
+            brand: values.card_brand || '',
+          }
+        : undefined;
+
+      // Create payment with all required fields
       await createPayment({
-        ...values,
-        payment_date: new Date().toISOString()
+        order_id: values.order_id,
+        amount: values.amount,
+        payment_date: new Date().toISOString(),
+        method: values.method,
+        transaction_id: values.transaction_id || `txn_${Math.random().toString(36).substring(2, 12)}`,
+        status: values.status,
+        card_details: cardDetails
       });
       
-      toast.success('Payment processed successfully');
+      toast.success('Payment recorded successfully');
       navigate('/payments');
     } catch (error) {
-      toast.error('Failed to process payment');
+      toast.error('Failed to record payment');
     } finally {
       setIsSaving(false);
     }
@@ -154,246 +164,212 @@ const PaymentForm = () => {
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back to Payments
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">Process Payment</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Record New Payment
+        </h1>
         <p className="text-muted-foreground mt-1">
-          Record a payment for a customer order
+          Process a payment for an order
         </p>
       </div>
 
       <div className="form-container max-w-2xl mx-auto">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Order Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Order selection */}
-                <FormField
-                  control={form.control}
-                  name="order_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Order</FormLabel>
-                      <Select 
-                        onValueChange={(value) => {
-                          field.onChange(value);
-                          handleOrderChange(value);
-                        }}
-                        value={field.value}
-                        disabled={!!orderId}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select an order" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {orders.map(order => (
-                            <SelectItem key={order.id} value={order.id}>
-                              {order.id} - {order.customer_name} (${order.total_amount.toFixed(2)})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            {/* Order selection */}
+            <FormField
+              control={form.control}
+              name="order_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Order</FormLabel>
+                  <Select 
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      handleOrderChange(value);
+                    }}
+                    value={field.value}
+                    disabled={!!orderId}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an order" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {orders.map(order => (
+                        <SelectItem key={order.id} value={order.id}>
+                          Order {order.id} - {order.customer_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                {selectedOrder && (
-                  <div className="bg-muted/50 p-4 rounded-md">
-                    <p><span className="font-medium">Customer:</span> {selectedOrder.customer_name}</p>
-                    <p><span className="font-medium">Order Date:</span> {new Date(selectedOrder.order_date).toLocaleDateString()}</p>
-                    <p><span className="font-medium">Status:</span> {selectedOrder.status}</p>
-                    <p className="font-semibold mt-2">Total Amount: ${selectedOrder.total_amount.toFixed(2)}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Payment amount */}
-                <FormField
-                  control={form.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Amount</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <span className="text-gray-500">$</span>
-                          </div>
-                          <Input 
-                            type="number"
-                            step="0.01" 
-                            className="pl-8"
-                            {...field}
-                            onChange={(e) => {
-                              const value = parseFloat(e.target.value);
-                              field.onChange(isNaN(value) ? 0 : value);
-                            }}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Payment method */}
-                <FormField
-                  control={form.control}
-                  name="method"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Method</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select payment method" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="credit_card">Credit Card</SelectItem>
-                          <SelectItem value="paypal">PayPal</SelectItem>
-                          <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                          <SelectItem value="cash">Cash</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Payment status */}
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Status</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select payment status" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="failed">Failed</SelectItem>
-                          <SelectItem value="refunded">Refunded</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Transaction ID */}
-                <FormField
-                  control={form.control}
-                  name="transaction_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Transaction ID</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Credit Card Details (conditional) */}
-                {paymentMethod === 'credit_card' && (
-                  <div className="bg-muted/50 p-4 rounded-md space-y-4">
-                    <h3 className="font-medium flex items-center">
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Card Details
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Card brand */}
-                      <FormField
-                        control={form.control}
-                        name="card_details.brand"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Card Brand</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange}
-                              value={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="Visa">Visa</SelectItem>
-                                <SelectItem value="Mastercard">Mastercard</SelectItem>
-                                <SelectItem value="American Express">American Express</SelectItem>
-                                <SelectItem value="Discover">Discover</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      {/* Last 4 digits */}
-                      <FormField
-                        control={form.control}
-                        name="card_details.last4"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Last 4 Digits</FormLabel>
-                            <FormControl>
-                              <Input 
-                                maxLength={4}
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      {/* Expiry date */}
-                      <FormField
-                        control={form.control}
-                        name="card_details.expiry"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Expiration Date</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="MM/YY"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+            {selectedOrder && (
+              <Card className="bg-muted/50">
+                <CardContent className="pt-6 pb-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Customer:</span>
+                      <span className="font-medium">{selectedOrder.customer_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Order Status:</span>
+                      <span className="font-medium capitalize">{selectedOrder.status}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total Amount:</span>
+                      <span className="font-medium">{formatCurrency(selectedOrder.total_amount)}</span>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Amount */}
+            <FormField
+              control={form.control}
+              name="amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Payment Amount ($)</FormLabel>
+                  <FormControl>
+                    <Input type="number" step="0.01" min="0" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Payment method */}
+              <FormField
+                control={form.control}
+                name="method"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Method</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select payment method" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="credit_card">Credit Card</SelectItem>
+                        <SelectItem value="paypal">PayPal</SelectItem>
+                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="cash">Cash</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </CardContent>
-            </Card>
+              />
+
+              {/* Payment status */}
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Status</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                        <SelectItem value="refunded">Refunded</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Transaction ID */}
+            <FormField
+              control={form.control}
+              name="transaction_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Transaction ID</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Will be auto-generated if left empty" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Card details section (conditional) */}
+            {showCardFields && (
+              <div className="space-y-6 border rounded-lg p-4 bg-muted/30">
+                <h3 className="font-medium">Card Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="card_last4"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last 4 Digits</FormLabel>
+                        <FormControl>
+                          <Input {...field} maxLength={4} placeholder="1234" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="card_brand"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Card Brand</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select brand" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Visa">Visa</SelectItem>
+                            <SelectItem value="Mastercard">Mastercard</SelectItem>
+                            <SelectItem value="Amex">American Express</SelectItem>
+                            <SelectItem value="Discover">Discover</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="card_expiry"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Expiry Date</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="MM/YY" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button
@@ -407,7 +383,7 @@ const PaymentForm = () => {
                 {isSaving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    Processing Payment...
                   </>
                 ) : (
                   'Process Payment'

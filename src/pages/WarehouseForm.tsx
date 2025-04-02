@@ -34,7 +34,7 @@ const WarehouseForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isEditMode = id !== 'new';
+  const isEditMode = id !== undefined && id !== 'new';
 
   const form = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseSchema),
@@ -79,7 +79,7 @@ const WarehouseForm = () => {
         await updateWarehouse(id as string, values);
         toast.success('Warehouse updated successfully');
       } else {
-        // Fix: Pass values directly (not as optional properties)
+        // Pass all required fields directly
         await createWarehouse({
           name: values.name,
           location: values.location

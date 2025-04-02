@@ -8,13 +8,6 @@ import { Skeleton } from '../components/ui/skeleton';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
-import {
   Form,
   FormControl,
   FormField,
@@ -22,18 +15,26 @@ import {
   FormLabel,
   FormMessage,
 } from '../components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Product } from '../models/types';
 import { getProduct, createProduct, updateProduct } from '../services/mockData';
 
+// Define validation schema
 const productSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
   description: z.string().min(5, { message: 'Description is required' }),
-  price: z.number().min(0.01, { message: 'Price must be greater than 0' }),
-  category: z.string().min(1, { message: 'Category is required' }),
-  stock: z.number().min(0, { message: 'Stock cannot be negative' }),
+  price: z.coerce.number().positive({ message: 'Price must be positive' }),
+  category: z.string().min(2, { message: 'Category is required' }),
+  stock: z.coerce.number().int().nonnegative({ message: 'Stock must be 0 or more' }),
 });
 
 type ProductFormValues = z.infer<typeof productSchema>;
@@ -44,22 +45,9 @@ const ProductForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isEditMode = id !== 'new';
+  const isEditMode = id !== undefined && id !== 'new';
 
-  // Available product categories
-  const categories = [
-    'Electronics',
-    'Furniture',
-    'Clothing',
-    'Home & Kitchen',
-    'Books',
-    'Toys',
-    'Sports',
-    'Photography',
-    'Beauty',
-    'Office Supplies'
-  ];
-
+  // Set up form with react-hook-form and zod validation
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
@@ -78,6 +66,7 @@ const ProductForm = () => {
         try {
           const data = await getProduct(id as string);
           if (data) {
+            // Update form values
             form.reset({
               name: data.name,
               description: data.description,
@@ -109,7 +98,14 @@ const ProductForm = () => {
         await updateProduct(id as string, values);
         toast.success('Product updated successfully');
       } else {
-        await createProduct(values);
+        // Create a new product with all required fields
+        await createProduct({
+          name: values.name,
+          description: values.description,
+          price: values.price,
+          category: values.category,
+          stock: values.stock
+        });
         toast.success('Product created successfully');
       }
       navigate('/products');
@@ -157,14 +153,13 @@ const ProductForm = () => {
         <p className="text-muted-foreground mt-1">
           {isEditMode
             ? 'Update product information'
-            : 'Create a new product listing'}
+            : 'Create a new product in the inventory'}
         </p>
       </div>
 
       <div className="form-container max-w-2xl mx-auto">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Product Name */}
             <FormField
               control={form.control}
               name="name"
@@ -179,7 +174,6 @@ const ProductForm = () => {
               )}
             />
 
-            {/* Description */}
             <FormField
               control={form.control}
               name="description"
@@ -187,73 +181,28 @@ const ProductForm = () => {
                 <FormItem>
                   <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Textarea rows={4} {...field} />
+                    <Textarea rows={3} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* Category */}
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select 
-                    onValueChange={field.onChange}
-                    value={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Price */}
               <FormField
                 control={form.control}
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Price</FormLabel>
+                    <FormLabel>Price ($)</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500">$</span>
-                        </div>
-                        <Input 
-                          type="number"
-                          step="0.01" 
-                          className="pl-8"
-                          {...field}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value);
-                            field.onChange(isNaN(value) ? 0 : value);
-                          }}
-                        />
-                      </div>
+                      <Input type="number" step="0.01" min="0" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* Stock */}
               <FormField
                 control={form.control}
                 name="stock"
@@ -261,20 +210,38 @@ const ProductForm = () => {
                   <FormItem>
                     <FormLabel>Stock Quantity</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number"
-                        {...field}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value);
-                          field.onChange(isNaN(value) ? 0 : value);
-                        }}
-                      />
+                      <Input type="number" min="0" step="1" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Electronics">Electronics</SelectItem>
+                      <SelectItem value="Furniture">Furniture</SelectItem>
+                      <SelectItem value="Home & Kitchen">Home & Kitchen</SelectItem>
+                      <SelectItem value="Photography">Photography</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button

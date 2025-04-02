@@ -3,16 +3,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import {
   Form,
   FormControl,
@@ -21,18 +15,26 @@ import {
   FormLabel,
   FormMessage,
 } from '../components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Expense, Warehouse } from '../models/types';
+import { Warehouse } from '../models/types';
 import { getExpense, createExpense, updateExpense, getWarehouses } from '../services/mockData';
 
+// Define validation schema
 const expenseSchema = z.object({
   title: z.string().min(2, { message: 'Title must be at least 2 characters' }),
-  amount: z.number().min(0.01, { message: 'Amount must be greater than 0' }),
-  category: z.string().min(1, { message: 'Category is required' }),
+  amount: z.coerce.number().positive({ message: 'Amount must be positive' }),
+  category: z.string().min(2, { message: 'Category is required' }),
   warehouse_id: z.string().min(1, { message: 'Warehouse is required' }),
-  expense_date: z.string().min(1, { message: 'Date is required' }),
+  expense_date: z.string(),
 });
 
 type ExpenseFormValues = z.infer<typeof expenseSchema>;
@@ -43,23 +45,10 @@ const ExpenseForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  
+  const isEditMode = id !== undefined && id !== 'new';
 
-  const isEditMode = id !== 'new';
-
-  // Available expense categories
-  const categories = [
-    'Rent',
-    'Utilities',
-    'Maintenance',
-    'Security',
-    'Insurance',
-    'Payroll',
-    'Supplies',
-    'Transportation',
-    'Equipment',
-    'Miscellaneous',
-  ];
-
+  // Set up form with react-hook-form and zod validation
   const form = useForm<ExpenseFormValues>({
     resolver: zodResolver(expenseSchema),
     defaultValues: {
@@ -67,61 +56,51 @@ const ExpenseForm = () => {
       amount: 0,
       category: '',
       warehouse_id: '',
-      expense_date: new Date().toISOString().slice(0, 10), // Today's date in YYYY-MM-DD format
+      expense_date: new Date().toISOString().split('T')[0],
     },
   });
 
   useEffect(() => {
-    // Fetch warehouses
-    const fetchWarehouses = async () => {
+    const fetchData = async () => {
+      setIsLoading(true);
       try {
-        const data = await getWarehouses();
-        setWarehouses(data);
-      } catch (error) {
-        toast.error('Failed to load warehouses');
-      }
-    };
-    
-    fetchWarehouses();
-    
-    // Fetch expense data if editing
-    if (isEditMode) {
-      const fetchExpense = async () => {
-        setIsLoading(true);
-        try {
-          const data = await getExpense(id as string);
-          if (data) {
-            // Format the date to YYYY-MM-DD for the date input
-            const formattedDate = new Date(data.expense_date).toISOString().slice(0, 10);
-            
+        // Fetch warehouses
+        const warehouseData = await getWarehouses();
+        setWarehouses(warehouseData);
+        
+        // If editing, fetch expense details
+        if (isEditMode) {
+          const expenseData = await getExpense(id as string);
+          if (expenseData) {
             form.reset({
-              title: data.title,
-              amount: data.amount,
-              category: data.category,
-              warehouse_id: data.warehouse_id,
-              expense_date: formattedDate,
+              title: expenseData.title,
+              amount: expenseData.amount,
+              category: expenseData.category,
+              warehouse_id: expenseData.warehouse_id,
+              expense_date: new Date(expenseData.expense_date).toISOString().split('T')[0],
             });
           } else {
             toast.error('Expense not found');
             navigate('/expenses');
           }
-        } catch (error) {
-          toast.error('Failed to fetch expense details');
-          navigate('/expenses');
-        } finally {
-          setIsLoading(false);
         }
-      };
+      } catch (error) {
+        toast.error('Failed to fetch data');
+        if (isEditMode) {
+          navigate('/expenses');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      fetchExpense();
-    }
+    fetchData();
   }, [id, isEditMode, navigate, form]);
 
   const onSubmit = async (values: ExpenseFormValues) => {
     setIsSaving(true);
     
     try {
-      // Find warehouse for the name
       const selectedWarehouse = warehouses.find(w => w.id === values.warehouse_id);
       
       if (!selectedWarehouse) {
@@ -130,21 +109,26 @@ const ExpenseForm = () => {
         return;
       }
       
-      // Fix: Ensure all required fields are provided
-      const expenseData = {
-        title: values.title,
-        amount: values.amount,
-        category: values.category,
-        warehouse_id: values.warehouse_id,
-        warehouse_name: selectedWarehouse.name,
-        expense_date: values.expense_date
-      };
-      
       if (isEditMode) {
-        await updateExpense(id as string, expenseData);
+        await updateExpense(id as string, {
+          title: values.title,
+          amount: values.amount,
+          category: values.category,
+          warehouse_id: values.warehouse_id,
+          warehouse_name: selectedWarehouse.name,
+          expense_date: new Date(values.expense_date).toISOString(),
+        });
         toast.success('Expense updated successfully');
       } else {
-        await createExpense(expenseData);
+        // Create expense with all required fields
+        await createExpense({
+          title: values.title,
+          amount: values.amount,
+          category: values.category,
+          warehouse_id: values.warehouse_id,
+          warehouse_name: selectedWarehouse.name,
+          expense_date: new Date(values.expense_date).toISOString(),
+        });
         toast.success('Expense created successfully');
       }
       navigate('/expenses');
@@ -191,7 +175,7 @@ const ExpenseForm = () => {
         </h1>
         <p className="text-muted-foreground mt-1">
           {isEditMode
-            ? 'Update expense information'
+            ? 'Update expense details'
             : 'Record a new expense'}
         </p>
       </div>
@@ -199,7 +183,6 @@ const ExpenseForm = () => {
       <div className="form-container max-w-2xl mx-auto">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Expense Title */}
             <FormField
               control={form.control}
               name="title"
@@ -214,66 +197,74 @@ const ExpenseForm = () => {
               )}
             />
 
-            {/* Expense Category */}
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select 
-                    onValueChange={field.onChange}
-                    value={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Amount */}
               <FormField
                 control={form.control}
                 name="amount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Amount</FormLabel>
+                    <FormLabel>Amount ($)</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500">$</span>
-                        </div>
-                        <Input 
-                          type="number"
-                          step="0.01" 
-                          className="pl-8"
-                          {...field}
-                          onChange={(e) => {
-                            const value = parseFloat(e.target.value);
-                            field.onChange(isNaN(value) ? 0 : value);
-                          }}
-                        />
-                      </div>
+                      <Input type="number" step="0.01" min="0" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* Expense Date */}
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Rent">Rent</SelectItem>
+                        <SelectItem value="Utilities">Utilities</SelectItem>
+                        <SelectItem value="Payroll">Payroll</SelectItem>
+                        <SelectItem value="Maintenance">Maintenance</SelectItem>
+                        <SelectItem value="Insurance">Insurance</SelectItem>
+                        <SelectItem value="Security">Security</SelectItem>
+                        <SelectItem value="Supplies">Supplies</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="warehouse_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Warehouse</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a warehouse" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {warehouses.map((warehouse) => (
+                          <SelectItem key={warehouse.id} value={warehouse.id}>
+                            {warehouse.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="expense_date"
@@ -288,35 +279,6 @@ const ExpenseForm = () => {
                 )}
               />
             </div>
-
-            {/* Warehouse */}
-            <FormField
-              control={form.control}
-              name="warehouse_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Warehouse</FormLabel>
-                  <Select 
-                    onValueChange={field.onChange}
-                    value={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select warehouse" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {warehouses.map((warehouse) => (
-                        <SelectItem key={warehouse.id} value={warehouse.id}>
-                          {warehouse.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button
