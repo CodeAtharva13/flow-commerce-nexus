@@ -79,7 +79,11 @@ const WarehouseForm = () => {
         await updateWarehouse(id as string, values);
         toast.success('Warehouse updated successfully');
       } else {
-        await createWarehouse(values);
+        // Fix: Pass values directly (not as optional properties)
+        await createWarehouse({
+          name: values.name,
+          location: values.location
+        });
         toast.success('Warehouse created successfully');
       }
       navigate('/warehouses');

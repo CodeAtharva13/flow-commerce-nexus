@@ -16,9 +16,11 @@ import ProductForm from "./pages/ProductForm";
 import Customers from "./pages/Customers";
 import CustomerForm from "./pages/CustomerForm";
 import Orders from "./pages/Orders";
+import OrderForm from "./pages/OrderForm";
 import Payments from "./pages/Payments";
 import PaymentForm from "./pages/PaymentForm";
 import Warehouses from "./pages/Warehouses";
+import WarehouseForm from "./pages/WarehouseForm";
 import Expenses from "./pages/Expenses";
 import ExpenseForm from "./pages/ExpenseForm";
 import NotFound from "./pages/NotFound";
@@ -52,13 +54,19 @@ const App = () => (
             
             {/* Orders */}
             <Route path="/orders" element={<ProtectedRoute><DashboardLayout><Orders /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/orders/new" element={<ProtectedRoute><DashboardLayout><OrderForm /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/orders/edit/:id" element={<ProtectedRoute><DashboardLayout><OrderForm /></DashboardLayout></ProtectedRoute>} />
             
             {/* Payments */}
             <Route path="/payments" element={<ProtectedRoute><DashboardLayout><Payments /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/payments/new" element={<ProtectedRoute><DashboardLayout><PaymentForm /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/payments/edit/:id" element={<ProtectedRoute><DashboardLayout><PaymentForm /></DashboardLayout></ProtectedRoute>} />
             <Route path="/payments/process/:orderId" element={<ProtectedRoute><DashboardLayout><PaymentForm /></DashboardLayout></ProtectedRoute>} />
             
             {/* Warehouses */}
             <Route path="/warehouses" element={<ProtectedRoute><DashboardLayout><Warehouses /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/warehouses/new" element={<ProtectedRoute><DashboardLayout><WarehouseForm /></DashboardLayout></ProtectedRoute>} />
+            <Route path="/warehouses/edit/:id" element={<ProtectedRoute><DashboardLayout><WarehouseForm /></DashboardLayout></ProtectedRoute>} />
             
             {/* Expenses */}
             <Route path="/expenses" element={<ProtectedRoute><DashboardLayout><Expenses /></DashboardLayout></ProtectedRoute>} />

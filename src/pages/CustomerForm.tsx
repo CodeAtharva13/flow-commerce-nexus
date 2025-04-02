@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
 import { Customer } from '../models/types';
@@ -89,7 +88,13 @@ const CustomerForm = () => {
         await updateCustomer(id as string, values);
         toast.success('Customer updated successfully');
       } else {
-        await createCustomer(values);
+        // Fix: Pass all required fields directly to ensure they're not optional
+        await createCustomer({
+          name: values.name,
+          email: values.email,
+          phone: values.phone,
+          address: values.address
+        });
         toast.success('Customer created successfully');
       }
       navigate('/customers');

@@ -130,9 +130,14 @@ const ExpenseForm = () => {
         return;
       }
       
+      // Fix: Ensure all required fields are provided
       const expenseData = {
-        ...values,
+        title: values.title,
+        amount: values.amount,
+        category: values.category,
+        warehouse_id: values.warehouse_id,
         warehouse_name: selectedWarehouse.name,
+        expense_date: values.expense_date
       };
       
       if (isEditMode) {

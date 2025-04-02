@@ -33,7 +33,7 @@ const orderItemSchema = z.object({
   product_id: z.string().min(1, { message: 'Product is required' }),
   product_name: z.string().optional(),
   quantity: z.number().min(1, { message: 'Quantity must be at least 1' }),
-  price: z.number().optional(),
+  price: z.number().min(0.01, { message: 'Price is required' }),
   subtotal: z.number().optional(),
   warehouse_id: z.string().min(1, { message: 'Warehouse is required' }),
 });
@@ -68,6 +68,7 @@ const OrderForm = () => {
         {
           product_id: '',
           quantity: 1,
+          price: 0,
           warehouse_id: '',
         },
       ],
@@ -141,6 +142,7 @@ const OrderForm = () => {
       {
         product_id: '',
         quantity: 1,
+        price: 0,
         warehouse_id: '',
       },
     ]);
@@ -189,8 +191,17 @@ const OrderForm = () => {
         // Handle updating existing order (not implemented yet)
         toast.error('Editing existing orders is not implemented yet');
       } else {
-        // Create new order
-        await createOrder(orderData, values.items);
+        // Create new order - ensure all required fields are passed
+        const orderItems = values.items.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name || products.find(p => p.id === item.product_id)?.name || '',
+          quantity: item.quantity,
+          price: item.price,
+          subtotal: item.subtotal || (item.price * item.quantity),
+          warehouse_id: item.warehouse_id
+        }));
+        
+        await createOrder(orderData, orderItems);
         toast.success('Order created successfully');
         navigate('/orders');
       }
