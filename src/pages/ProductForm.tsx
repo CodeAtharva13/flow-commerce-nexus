@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
@@ -23,12 +22,13 @@ const ProductForm = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [product, setProduct] = useState<Partial<Product>>({
+  const [product, setProduct] = useState<Product>({
+    id: '',
     name: '',
     description: '',
     price: 0,
     category: '',
-    stock: 0,
+    stock: 0
   });
 
   const isEditMode = id !== 'new';
@@ -73,7 +73,8 @@ const ProductForm = () => {
         await updateProduct(id as string, product);
         toast.success('Product updated successfully');
       } else {
-        await createProduct(product);
+        const { name, description, price, category, stock } = product;
+        await createProduct({ name, description, price, category, stock });
         toast.success('Product created successfully');
       }
       navigate('/products');

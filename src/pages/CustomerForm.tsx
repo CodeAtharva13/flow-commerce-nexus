@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
@@ -16,11 +15,13 @@ const CustomerForm = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [customer, setCustomer] = useState<Partial<Customer>>({
+  const [customer, setCustomer] = useState<Customer>({
+    id: '',
     name: '',
     email: '',
     phone: '',
     address: '',
+    created_at: ''
   });
 
   const isEditMode = id !== 'new';
@@ -65,7 +66,8 @@ const CustomerForm = () => {
         await updateCustomer(id as string, customer);
         toast.success('Customer updated successfully');
       } else {
-        await createCustomer(customer);
+        const { name, email, phone, address } = customer;
+        await createCustomer({ name, email, phone, address });
         toast.success('Customer created successfully');
       }
       navigate('/customers');

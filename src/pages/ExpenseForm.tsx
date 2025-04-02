@@ -1,10 +1,9 @@
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
 import {
   Select,
@@ -13,16 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { Expense, Warehouse } from '../models/types';
-import { 
-  createExpense, 
-  getExpense, 
-  updateExpense, 
-  getWarehouses 
-} from '../services/mockData';
+import { createExpense, getExpense, updateExpense, getWarehouses } from '../services/mockData';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { Expense, Warehouse } from '../models/types';
 
 const ExpenseForm = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,13 +23,14 @@ const ExpenseForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [expense, setExpense] = useState<Partial<Expense>>({
+  const [expense, setExpense] = useState<Expense>({
+    id: '',
     title: '',
     amount: 0,
     category: '',
     warehouse_id: '',
     warehouse_name: '',
-    expense_date: new Date().toISOString(),
+    expense_date: new Date().toISOString().split('T')[0]
   });
 
   const isEditMode = id !== 'new';
@@ -45,25 +39,30 @@ const ExpenseForm = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // Fetch warehouses for dropdown
-        const warehouseData = await getWarehouses();
-        setWarehouses(warehouseData);
-        
-        // If edit mode, fetch expense details
+        const warehousesData = await getWarehouses();
+        setWarehouses(warehousesData);
+
         if (isEditMode) {
           const expenseData = await getExpense(id as string);
           if (expenseData) {
-            setExpense(expenseData);
+            setExpense({
+              ...expenseData,
+              expense_date: new Date(expenseData.expense_date).toISOString().split('T')[0]
+            });
           } else {
             toast.error('Expense not found');
             navigate('/expenses');
           }
+        } else if (warehousesData.length > 0) {
+          // Set default warehouse for new expense
+          setExpense(prev => ({
+            ...prev,
+            warehouse_id: warehousesData[0].id,
+            warehouse_name: warehousesData[0].name
+          }));
         }
       } catch (error) {
         toast.error('Failed to fetch data');
-        if (isEditMode) {
-          navigate('/expenses');
-        }
       } finally {
         setIsLoading(false);
       }
@@ -72,20 +71,23 @@ const ExpenseForm = () => {
     fetchData();
   }, [id, isEditMode, navigate]);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setExpense((prev) => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) || 0 : value }));
+    setExpense(prev => ({
+      ...prev,
+      [name]: name === 'amount' ? parseFloat(value) || 0 : value
+    }));
   };
 
   const handleWarehouseChange = (warehouseId: string) => {
-    const selectedWarehouse = warehouses.find(w => w.id === warehouseId);
-    setExpense((prev) => ({ 
-      ...prev, 
-      warehouse_id: warehouseId,
-      warehouse_name: selectedWarehouse?.name || ''
-    }));
+    const selected = warehouses.find(w => w.id === warehouseId);
+    if (selected) {
+      setExpense(prev => ({
+        ...prev,
+        warehouse_id: selected.id,
+        warehouse_name: selected.name
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,7 +99,16 @@ const ExpenseForm = () => {
         await updateExpense(id as string, expense);
         toast.success('Expense updated successfully');
       } else {
-        await createExpense(expense);
+        // Explicitly prepare the expense with required fields to match the type
+        const newExpense = {
+          title: expense.title,
+          amount: expense.amount,
+          category: expense.category,
+          warehouse_id: expense.warehouse_id,
+          warehouse_name: expense.warehouse_name,
+          expense_date: expense.expense_date
+        };
+        await createExpense(newExpense);
         toast.success('Expense created successfully');
       }
       navigate('/expenses');
@@ -108,27 +119,18 @@ const ExpenseForm = () => {
     }
   };
 
-  const categoryOptions = [
+  const categories = [
     'Rent',
     'Utilities',
-    'Maintenance',
-    'Security',
-    'Payroll',
-    'Insurance',
-    'Supplies',
+    'Salaries',
     'Equipment',
-    'Shipping',
+    'Maintenance',
+    'Insurance',
+    'Marketing',
+    'Office Supplies',
+    'Transportation',
     'Other'
   ];
-  
-  // Format expense date for the input
-  const formatDateForInput = (dateString: string) => {
-    try {
-      return format(new Date(dateString), 'yyyy-MM-dd');
-    } catch {
-      return format(new Date(), 'yyyy-MM-dd');
-    }
-  };
 
   if (isLoading) {
     return (
@@ -165,9 +167,7 @@ const ExpenseForm = () => {
           {isEditMode ? 'Edit Expense' : 'Add New Expense'}
         </h1>
         <p className="text-muted-foreground mt-1">
-          {isEditMode
-            ? 'Update expense information'
-            : 'Record a new expense'}
+          {isEditMode ? 'Update expense details' : 'Record a new expense'}
         </p>
       </div>
 
@@ -209,15 +209,13 @@ const ExpenseForm = () => {
               <Label htmlFor="category">Category</Label>
               <Select
                 value={expense.category}
-                onValueChange={(value) =>
-                  setExpense((prev) => ({ ...prev, category: value }))
-                }
+                onValueChange={(value) => setExpense(prev => ({ ...prev, category: value }))}
               >
                 <SelectTrigger id="category">
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categoryOptions.map((category) => (
+                  {categories.map(category => (
                     <SelectItem key={category} value={category}>
                       {category}
                     </SelectItem>
@@ -225,18 +223,18 @@ const ExpenseForm = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="grid gap-3">
-              <Label htmlFor="warehouse">Warehouse</Label>
+              <Label htmlFor="warehouse_id">Warehouse</Label>
               <Select
                 value={expense.warehouse_id}
                 onValueChange={handleWarehouseChange}
               >
-                <SelectTrigger id="warehouse">
+                <SelectTrigger id="warehouse_id">
                   <SelectValue placeholder="Select a warehouse" />
                 </SelectTrigger>
                 <SelectContent>
-                  {warehouses.map((warehouse) => (
+                  {warehouses.map(warehouse => (
                     <SelectItem key={warehouse.id} value={warehouse.id}>
                       {warehouse.name}
                     </SelectItem>
@@ -246,18 +244,13 @@ const ExpenseForm = () => {
             </div>
 
             <div className="grid gap-3">
-              <Label htmlFor="expense_date">Expense Date</Label>
+              <Label htmlFor="expense_date">Date</Label>
               <Input
                 id="expense_date"
                 name="expense_date"
                 type="date"
-                value={formatDateForInput(expense.expense_date || '')}
-                onChange={(e) => 
-                  setExpense((prev) => ({ 
-                    ...prev, 
-                    expense_date: new Date(e.target.value).toISOString() 
-                  }))
-                }
+                value={expense.expense_date}
+                onChange={handleChange}
                 required
               />
             </div>
