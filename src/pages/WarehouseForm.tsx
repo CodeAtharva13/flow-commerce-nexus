@@ -3,16 +3,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
-import { Customer } from '../models/types';
-import { createCustomer, getCustomer, updateCustomer } from '../services/mockData';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Form,
   FormControl,
@@ -21,18 +15,20 @@ import {
   FormLabel,
   FormMessage,
 } from '../components/ui/form';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Warehouse } from '../models/types';
+import { getWarehouse, createWarehouse, updateWarehouse } from '../services/mockData';
 
-// Define validation schema
-const customerSchema = z.object({
+const warehouseSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
-  email: z.string().email({ message: 'Invalid email address' }),
-  phone: z.string().min(5, { message: 'Phone number is required' }),
-  address: z.string().min(5, { message: 'Address is required' })
+  location: z.string().min(5, { message: 'Location is required' }),
 });
 
-type CustomerFormValues = z.infer<typeof customerSchema>;
+type WarehouseFormValues = z.infer<typeof warehouseSchema>;
 
-const CustomerForm = () => {
+const WarehouseForm = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -40,61 +36,55 @@ const CustomerForm = () => {
 
   const isEditMode = id !== 'new';
 
-  // Set up form with react-hook-form and zod validation
-  const form = useForm<CustomerFormValues>({
-    resolver: zodResolver(customerSchema),
+  const form = useForm<WarehouseFormValues>({
+    resolver: zodResolver(warehouseSchema),
     defaultValues: {
       name: '',
-      email: '',
-      phone: '',
-      address: '',
+      location: '',
     },
   });
 
   useEffect(() => {
     if (isEditMode) {
-      const fetchCustomer = async () => {
+      const fetchWarehouse = async () => {
         setIsLoading(true);
         try {
-          const data = await getCustomer(id as string);
+          const data = await getWarehouse(id as string);
           if (data) {
-            // Update form values
             form.reset({
               name: data.name,
-              email: data.email,
-              phone: data.phone,
-              address: data.address,
+              location: data.location,
             });
           } else {
-            toast.error('Customer not found');
-            navigate('/customers');
+            toast.error('Warehouse not found');
+            navigate('/warehouses');
           }
         } catch (error) {
-          toast.error('Failed to fetch customer details');
-          navigate('/customers');
+          toast.error('Failed to fetch warehouse details');
+          navigate('/warehouses');
         } finally {
           setIsLoading(false);
         }
       };
 
-      fetchCustomer();
+      fetchWarehouse();
     }
   }, [id, isEditMode, navigate, form]);
 
-  const onSubmit = async (values: CustomerFormValues) => {
+  const onSubmit = async (values: WarehouseFormValues) => {
     setIsSaving(true);
-
+    
     try {
       if (isEditMode) {
-        await updateCustomer(id as string, values);
-        toast.success('Customer updated successfully');
+        await updateWarehouse(id as string, values);
+        toast.success('Warehouse updated successfully');
       } else {
-        await createCustomer(values);
-        toast.success('Customer created successfully');
+        await createWarehouse(values);
+        toast.success('Warehouse created successfully');
       }
-      navigate('/customers');
+      navigate('/warehouses');
     } catch (error) {
-      toast.error(isEditMode ? 'Failed to update customer' : 'Failed to create customer');
+      toast.error(isEditMode ? 'Failed to update warehouse' : 'Failed to create warehouse');
     } finally {
       setIsSaving(false);
     }
@@ -105,7 +95,7 @@ const CustomerForm = () => {
       <div className="page-container">
         <Skeleton className="h-8 w-64 mb-4" />
         <div className="space-y-6">
-          {Array(4).fill(0).map((_, i) => (
+          {Array(3).fill(0).map((_, i) => (
             <div key={i} className="space-y-2">
               <Skeleton className="h-5 w-24" />
               <Skeleton className="h-10 w-full" />
@@ -125,23 +115,23 @@ const CustomerForm = () => {
       <div className="mb-8">
         <Button
           variant="ghost"
-          onClick={() => navigate('/customers')}
+          onClick={() => navigate('/warehouses')}
           className="mb-2"
         >
           <ChevronLeft className="mr-2 h-4 w-4" />
-          Back to Customers
+          Back to Warehouses
         </Button>
         <h1 className="text-3xl font-bold tracking-tight">
-          {isEditMode ? 'Edit Customer' : 'Add New Customer'}
+          {isEditMode ? 'Edit Warehouse' : 'Add New Warehouse'}
         </h1>
         <p className="text-muted-foreground mt-1">
           {isEditMode
-            ? 'Update customer information'
-            : 'Create a new customer record'}
+            ? 'Update warehouse information'
+            : 'Create a new warehouse location'}
         </p>
       </div>
 
-      <div className="form-container">
+      <div className="form-container max-w-2xl mx-auto">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
@@ -149,7 +139,7 @@ const CustomerForm = () => {
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Full Name</FormLabel>
+                  <FormLabel>Warehouse Name</FormLabel>
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
@@ -160,38 +150,10 @@ const CustomerForm = () => {
 
             <FormField
               control={form.control}
-              name="email"
+              name="location"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email Address</FormLabel>
-                  <FormControl>
-                    <Input type="email" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phone Number</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Address</FormLabel>
+                  <FormLabel>Location Address</FormLabel>
                   <FormControl>
                     <Textarea rows={3} {...field} />
                   </FormControl>
@@ -204,7 +166,7 @@ const CustomerForm = () => {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => navigate('/customers')}
+                onClick={() => navigate('/warehouses')}
               >
                 Cancel
               </Button>
@@ -215,9 +177,9 @@ const CustomerForm = () => {
                     {isEditMode ? 'Updating...' : 'Creating...'}
                   </>
                 ) : isEditMode ? (
-                  'Update Customer'
+                  'Update Warehouse'
                 ) : (
-                  'Create Customer'
+                  'Create Warehouse'
                 )}
               </Button>
             </div>
@@ -228,4 +190,4 @@ const CustomerForm = () => {
   );
 };
 
-export default CustomerForm;
+export default WarehouseForm;

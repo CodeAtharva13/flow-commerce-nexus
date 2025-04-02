@@ -1,10 +1,12 @@
+
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
+import { toast } from 'sonner';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -12,26 +14,62 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '../components/ui/form';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Product } from '../models/types';
-import { createProduct, getProduct, updateProduct } from '../services/mockData';
-import { toast } from 'sonner';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { getProduct, createProduct, updateProduct } from '../services/mockData';
+
+const productSchema = z.object({
+  name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
+  description: z.string().min(5, { message: 'Description is required' }),
+  price: z.number().min(0.01, { message: 'Price must be greater than 0' }),
+  category: z.string().min(1, { message: 'Category is required' }),
+  stock: z.number().min(0, { message: 'Stock cannot be negative' }),
+});
+
+type ProductFormValues = z.infer<typeof productSchema>;
 
 const ProductForm = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [product, setProduct] = useState<Product>({
-    id: '',
-    name: '',
-    description: '',
-    price: 0,
-    category: '',
-    stock: 0
-  });
 
   const isEditMode = id !== 'new';
+
+  // Available product categories
+  const categories = [
+    'Electronics',
+    'Furniture',
+    'Clothing',
+    'Home & Kitchen',
+    'Books',
+    'Toys',
+    'Sports',
+    'Photography',
+    'Beauty',
+    'Office Supplies'
+  ];
+
+  const form = useForm<ProductFormValues>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      price: 0,
+      category: '',
+      stock: 0,
+    },
+  });
 
   useEffect(() => {
     if (isEditMode) {
@@ -40,7 +78,13 @@ const ProductForm = () => {
         try {
           const data = await getProduct(id as string);
           if (data) {
-            setProduct(data);
+            form.reset({
+              name: data.name,
+              description: data.description,
+              price: data.price,
+              category: data.category,
+              stock: data.stock,
+            });
           } else {
             toast.error('Product not found');
             navigate('/products');
@@ -55,26 +99,17 @@ const ProductForm = () => {
 
       fetchProduct();
     }
-  }, [id, isEditMode, navigate]);
+  }, [id, isEditMode, navigate, form]);
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setProduct((prev) => ({ ...prev, [name]: name === 'price' || name === 'stock' ? parseFloat(value) || 0 : value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (values: ProductFormValues) => {
     setIsSaving(true);
-
+    
     try {
       if (isEditMode) {
-        await updateProduct(id as string, product);
+        await updateProduct(id as string, values);
         toast.success('Product updated successfully');
       } else {
-        const { name, description, price, category, stock } = product;
-        await createProduct({ name, description, price, category, stock });
+        await createProduct(values);
         toast.success('Product created successfully');
       }
       navigate('/products');
@@ -84,19 +119,6 @@ const ProductForm = () => {
       setIsSaving(false);
     }
   };
-
-  const categoryOptions = [
-    'Electronics',
-    'Clothing',
-    'Home & Kitchen',
-    'Books',
-    'Toys',
-    'Furniture',
-    'Beauty',
-    'Sports',
-    'Automotive',
-    'Other',
-  ];
 
   if (isLoading) {
     return (
@@ -134,91 +156,124 @@ const ProductForm = () => {
         </h1>
         <p className="text-muted-foreground mt-1">
           {isEditMode
-            ? 'Update your product information'
-            : 'Create a new product entry'}
+            ? 'Update product information'
+            : 'Create a new product listing'}
         </p>
       </div>
 
-      <div className="form-container">
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6">
-            <div className="grid gap-3">
-              <Label htmlFor="name">Product Name</Label>
-              <Input
-                id="name"
-                name="name"
-                value={product.name}
-                onChange={handleChange}
-                required
+      <div className="form-container max-w-2xl mx-auto">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Product Name */}
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Product Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Description */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea rows={4} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Category */}
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select 
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Price */}
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Price</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500">$</span>
+                        </div>
+                        <Input 
+                          type="number"
+                          step="0.01" 
+                          className="pl-8"
+                          {...field}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value);
+                            field.onChange(isNaN(value) ? 0 : value);
+                          }}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="grid gap-3">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={product.description}
-                onChange={handleChange}
-                rows={3}
-                required
+              {/* Stock */}
+              <FormField
+                control={form.control}
+                name="stock"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Stock Quantity</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number"
+                        {...field}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          field.onChange(isNaN(value) ? 0 : value);
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-
-            <div className="grid gap-3">
-              <Label htmlFor="category">Category</Label>
-              <Select
-                value={product.category}
-                onValueChange={(value) =>
-                  setProduct((prev) => ({ ...prev, category: value }))
-                }
-              >
-                <SelectTrigger id="category">
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categoryOptions.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div className="grid gap-3">
-                <Label htmlFor="price">Price</Label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <span className="text-muted-foreground">$</span>
-                  </div>
-                  <Input
-                    id="price"
-                    name="price"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={product.price}
-                    onChange={handleChange}
-                    className="pl-8"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-3">
-                <Label htmlFor="stock">Stock</Label>
-                <Input
-                  id="stock"
-                  name="stock"
-                  type="number"
-                  min="0"
-                  value={product.stock}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
             </div>
 
             <div className="flex justify-end space-x-2 pt-4">
@@ -242,8 +297,8 @@ const ProductForm = () => {
                 )}
               </Button>
             </div>
-          </div>
-        </form>
+          </form>
+        </Form>
       </div>
     </div>
   );

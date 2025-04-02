@@ -8,9 +8,9 @@ import {
   Search,
   MoreHorizontal,
   Filter,
+  Warehouse,
   MapPin,
-  Package,
-  ReceiptText,
+  Calendar,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -39,17 +39,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
-import { Warehouse } from '../models/types';
+import { Warehouse as WarehouseType } from '../models/types';
 import { getWarehouses, deleteWarehouse } from '../services/mockData';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 const Warehouses = () => {
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [warehouseToDelete, setWarehouseToDelete] = useState<Warehouse | null>(null);
+  const [warehouseToDelete, setWarehouseToDelete] = useState<WarehouseType | null>(null);
 
   useEffect(() => {
     const fetchWarehouses = async () => {
@@ -66,7 +66,7 @@ const Warehouses = () => {
     fetchWarehouses();
   }, []);
 
-  const handleDeleteClick = (warehouse: Warehouse) => {
+  const handleDeleteClick = (warehouse: WarehouseType) => {
     setWarehouseToDelete(warehouse);
     setIsDeleteDialogOpen(true);
   };
@@ -107,7 +107,7 @@ const Warehouses = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Warehouses</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your warehouse facilities
+            Manage your warehouse locations
           </p>
         </div>
         <Button asChild>
@@ -139,7 +139,7 @@ const Warehouses = () => {
           {Array(3)
             .fill(0)
             .map((_, index) => (
-              <Skeleton key={index} className="h-[220px] rounded-xl" />
+              <Skeleton key={index} className="h-[200px] rounded-xl" />
             ))}
         </div>
       ) : filteredWarehouses.length === 0 ? (
@@ -161,11 +161,14 @@ const Warehouses = () => {
             <Card key={warehouse.id} className="overflow-hidden card-transition">
               <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle>{warehouse.name}</CardTitle>
-                    <CardDescription className="mt-1">
-                      Created on {formatDate(warehouse.created_at)}
-                    </CardDescription>
+                  <div className="flex items-center">
+                    <Warehouse className="h-5 w-5 mr-2 text-primary" />
+                    <div>
+                      <CardTitle>{warehouse.name}</CardTitle>
+                      <CardDescription className="mt-1">
+                        Since {formatDate(warehouse.created_at)}
+                      </CardDescription>
+                    </div>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -197,20 +200,15 @@ const Warehouses = () => {
                     <MapPin className="h-4 w-4 mr-2 text-muted-foreground mt-0.5" />
                     <span className="text-sm">{warehouse.location}</span>
                   </div>
+                  <div className="flex items-center">
+                    <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <span className="text-sm">Created on {formatDate(warehouse.created_at)}</span>
+                  </div>
                 </div>
               </CardContent>
-              <CardFooter className="pt-2 pb-4 flex justify-between">
-                <Button variant="outline" size="sm" asChild>
-                  <Link to={`/warehouses/${warehouse.id}/inventory`}>
-                    <Package className="h-4 w-4 mr-1" />
-                    Inventory
-                  </Link>
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <Link to={`/warehouses/${warehouse.id}/expenses`}>
-                    <ReceiptText className="h-4 w-4 mr-1" />
-                    Expenses
-                  </Link>
+              <CardFooter>
+                <Button variant="outline" asChild className="w-full">
+                  <Link to={`/warehouses/${warehouse.id}`}>View Details</Link>
                 </Button>
               </CardFooter>
             </Card>
@@ -225,7 +223,7 @@ const Warehouses = () => {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete the warehouse "{warehouseToDelete?.name}".
-              This action cannot be undone and may affect products and orders associated with this warehouse.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

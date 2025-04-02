@@ -1,10 +1,11 @@
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Skeleton } from '../components/ui/skeleton';
+import { toast } from 'sonner';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -12,10 +13,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { createExpense, getExpense, updateExpense, getWarehouses } from '../services/mockData';
-import { toast } from 'sonner';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '../components/ui/form';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Expense, Warehouse } from '../models/types';
+import { getExpense, createExpense, updateExpense, getWarehouses } from '../services/mockData';
+
+const expenseSchema = z.object({
+  title: z.string().min(2, { message: 'Title must be at least 2 characters' }),
+  amount: z.number().min(0.01, { message: 'Amount must be greater than 0' }),
+  category: z.string().min(1, { message: 'Category is required' }),
+  warehouse_id: z.string().min(1, { message: 'Warehouse is required' }),
+  expense_date: z.string().min(1, { message: 'Date is required' }),
+});
+
+type ExpenseFormValues = z.infer<typeof expenseSchema>;
 
 const ExpenseForm = () => {
   const { id } = useParams<{ id: string }>();
@@ -23,92 +43,103 @@ const ExpenseForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [expense, setExpense] = useState<Expense>({
-    id: '',
-    title: '',
-    amount: 0,
-    category: '',
-    warehouse_id: '',
-    warehouse_name: '',
-    expense_date: new Date().toISOString().split('T')[0]
-  });
 
   const isEditMode = id !== 'new';
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const warehousesData = await getWarehouses();
-        setWarehouses(warehousesData);
+  // Available expense categories
+  const categories = [
+    'Rent',
+    'Utilities',
+    'Maintenance',
+    'Security',
+    'Insurance',
+    'Payroll',
+    'Supplies',
+    'Transportation',
+    'Equipment',
+    'Miscellaneous',
+  ];
 
-        if (isEditMode) {
-          const expenseData = await getExpense(id as string);
-          if (expenseData) {
-            setExpense({
-              ...expenseData,
-              expense_date: new Date(expenseData.expense_date).toISOString().split('T')[0]
+  const form = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseSchema),
+    defaultValues: {
+      title: '',
+      amount: 0,
+      category: '',
+      warehouse_id: '',
+      expense_date: new Date().toISOString().slice(0, 10), // Today's date in YYYY-MM-DD format
+    },
+  });
+
+  useEffect(() => {
+    // Fetch warehouses
+    const fetchWarehouses = async () => {
+      try {
+        const data = await getWarehouses();
+        setWarehouses(data);
+      } catch (error) {
+        toast.error('Failed to load warehouses');
+      }
+    };
+    
+    fetchWarehouses();
+    
+    // Fetch expense data if editing
+    if (isEditMode) {
+      const fetchExpense = async () => {
+        setIsLoading(true);
+        try {
+          const data = await getExpense(id as string);
+          if (data) {
+            // Format the date to YYYY-MM-DD for the date input
+            const formattedDate = new Date(data.expense_date).toISOString().slice(0, 10);
+            
+            form.reset({
+              title: data.title,
+              amount: data.amount,
+              category: data.category,
+              warehouse_id: data.warehouse_id,
+              expense_date: formattedDate,
             });
           } else {
             toast.error('Expense not found');
             navigate('/expenses');
           }
-        } else if (warehousesData.length > 0) {
-          // Set default warehouse for new expense
-          setExpense(prev => ({
-            ...prev,
-            warehouse_id: warehousesData[0].id,
-            warehouse_name: warehousesData[0].name
-          }));
+        } catch (error) {
+          toast.error('Failed to fetch expense details');
+          navigate('/expenses');
+        } finally {
+          setIsLoading(false);
         }
-      } catch (error) {
-        toast.error('Failed to fetch data');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      };
 
-    fetchData();
-  }, [id, isEditMode, navigate]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setExpense(prev => ({
-      ...prev,
-      [name]: name === 'amount' ? parseFloat(value) || 0 : value
-    }));
-  };
-
-  const handleWarehouseChange = (warehouseId: string) => {
-    const selected = warehouses.find(w => w.id === warehouseId);
-    if (selected) {
-      setExpense(prev => ({
-        ...prev,
-        warehouse_id: selected.id,
-        warehouse_name: selected.name
-      }));
+      fetchExpense();
     }
-  };
+  }, [id, isEditMode, navigate, form]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (values: ExpenseFormValues) => {
     setIsSaving(true);
-
+    
     try {
+      // Find warehouse for the name
+      const selectedWarehouse = warehouses.find(w => w.id === values.warehouse_id);
+      
+      if (!selectedWarehouse) {
+        toast.error('Selected warehouse not found');
+        setIsSaving(false);
+        return;
+      }
+      
+      const expenseData = {
+        ...values,
+        warehouse_name: selectedWarehouse.name,
+      };
+      
       if (isEditMode) {
-        await updateExpense(id as string, expense);
+        await updateExpense(id as string, expenseData);
         toast.success('Expense updated successfully');
       } else {
-        // Explicitly prepare the expense with required fields to match the type
-        const newExpense = {
-          title: expense.title,
-          amount: expense.amount,
-          category: expense.category,
-          warehouse_id: expense.warehouse_id,
-          warehouse_name: expense.warehouse_name,
-          expense_date: expense.expense_date
-        };
-        await createExpense(newExpense);
+        await createExpense(expenseData);
         toast.success('Expense created successfully');
       }
       navigate('/expenses');
@@ -118,19 +149,6 @@ const ExpenseForm = () => {
       setIsSaving(false);
     }
   };
-
-  const categories = [
-    'Rent',
-    'Utilities',
-    'Salaries',
-    'Equipment',
-    'Maintenance',
-    'Insurance',
-    'Marketing',
-    'Office Supplies',
-    'Transportation',
-    'Other'
-  ];
 
   if (isLoading) {
     return (
@@ -167,93 +185,133 @@ const ExpenseForm = () => {
           {isEditMode ? 'Edit Expense' : 'Add New Expense'}
         </h1>
         <p className="text-muted-foreground mt-1">
-          {isEditMode ? 'Update expense details' : 'Record a new expense'}
+          {isEditMode
+            ? 'Update expense information'
+            : 'Record a new expense'}
         </p>
       </div>
 
-      <div className="form-container">
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-6">
-            <div className="grid gap-3">
-              <Label htmlFor="title">Expense Title</Label>
-              <Input
-                id="title"
-                name="title"
-                value={expense.title}
-                onChange={handleChange}
-                required
+      <div className="form-container max-w-2xl mx-auto">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Expense Title */}
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expense Title</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Expense Category */}
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select 
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Amount */}
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500">$</span>
+                        </div>
+                        <Input 
+                          type="number"
+                          step="0.01" 
+                          className="pl-8"
+                          {...field}
+                          onChange={(e) => {
+                            const value = parseFloat(e.target.value);
+                            field.onChange(isNaN(value) ? 0 : value);
+                          }}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="grid gap-3">
-              <Label htmlFor="amount">Amount</Label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                  <span className="text-muted-foreground">$</span>
-                </div>
-                <Input
-                  id="amount"
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={expense.amount}
-                  onChange={handleChange}
-                  className="pl-8"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3">
-              <Label htmlFor="category">Category</Label>
-              <Select
-                value={expense.category}
-                onValueChange={(value) => setExpense(prev => ({ ...prev, category: value }))}
-              >
-                <SelectTrigger id="category">
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-3">
-              <Label htmlFor="warehouse_id">Warehouse</Label>
-              <Select
-                value={expense.warehouse_id}
-                onValueChange={handleWarehouseChange}
-              >
-                <SelectTrigger id="warehouse_id">
-                  <SelectValue placeholder="Select a warehouse" />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map(warehouse => (
-                    <SelectItem key={warehouse.id} value={warehouse.id}>
-                      {warehouse.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-3">
-              <Label htmlFor="expense_date">Date</Label>
-              <Input
-                id="expense_date"
+              {/* Expense Date */}
+              <FormField
+                control={form.control}
                 name="expense_date"
-                type="date"
-                value={expense.expense_date}
-                onChange={handleChange}
-                required
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
+
+            {/* Warehouse */}
+            <FormField
+              control={form.control}
+              name="warehouse_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Warehouse</FormLabel>
+                  <Select 
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select warehouse" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {warehouses.map((warehouse) => (
+                        <SelectItem key={warehouse.id} value={warehouse.id}>
+                          {warehouse.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="flex justify-end space-x-2 pt-4">
               <Button
@@ -276,8 +334,8 @@ const ExpenseForm = () => {
                 )}
               </Button>
             </div>
-          </div>
-        </form>
+          </form>
+        </Form>
       </div>
     </div>
   );
