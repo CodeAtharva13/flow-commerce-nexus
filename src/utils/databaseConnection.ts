@@ -1,21 +1,14 @@
 
-import { mockMongoDB } from '../services/mockMongoDB';
+import { initializePostgres, closePostgres, PostgresConfig } from '../services/postgresDB';
 
 // Connection status types
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-// Connection configuration
-export interface DatabaseConfig {
-  uri: string;
-  dbName: string;
-  options?: Record<string, any>;
-}
 
 // Singleton to track database connection state
 class DatabaseConnection {
   private static instance: DatabaseConnection;
   private _status: ConnectionStatus = 'disconnected';
-  private _config: DatabaseConfig | null = null;
+  private _config: PostgresConfig | null = null;
   private _error: Error | null = null;
   
   private constructor() {}
@@ -38,56 +31,48 @@ class DatabaseConnection {
   }
   
   // Get connection config
-  get config(): DatabaseConfig | null {
+  get config(): PostgresConfig | null {
     return this._config;
   }
   
-  // Connect to database (mock implementation)
-  async connect(config: DatabaseConfig): Promise<boolean> {
+  // Connect to database
+  async connect(config: PostgresConfig): Promise<boolean> {
     this._status = 'connecting';
     this._config = config;
     
-    console.log(`Attempting to connect to MongoDB at ${config.uri} (database: ${config.dbName})`);
+    console.log(`Attempting to connect to PostgreSQL at ${config.host} (database: ${config.database})`);
     
     try {
-      // In a real implementation, this would use the MongoDB driver
-      // For our mock implementation, we'll just simulate a connection
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Use our mock MongoDB connection
-      mockMongoDB.connectToExternalMongoDB(config.uri);
-      
+      initializePostgres(config);
       this._status = 'connected';
       this._error = null;
       
-      console.log('Connected successfully to MongoDB (mock)');
+      console.log('Connected successfully to PostgreSQL');
       return true;
     } catch (err: any) {
       this._status = 'error';
       this._error = err;
-      console.error('Failed to connect to MongoDB:', err);
+      console.error('Failed to connect to PostgreSQL:', err);
       return false;
     }
   }
   
-  // Disconnect from database (mock implementation)
+  // Disconnect from database
   async disconnect(): Promise<boolean> {
     if (this._status !== 'connected') {
       return true;
     }
     
-    console.log('Disconnecting from MongoDB');
+    console.log('Disconnecting from PostgreSQL');
     
     try {
-      // Simulate disconnection
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      await closePostgres();
       this._status = 'disconnected';
-      console.log('Disconnected from MongoDB');
+      console.log('Disconnected from PostgreSQL');
       return true;
     } catch (err: any) {
       this._error = err;
-      console.error('Error disconnecting from MongoDB:', err);
+      console.error('Error disconnecting from PostgreSQL:', err);
       return false;
     }
   }
@@ -104,28 +89,28 @@ class DatabaseConnection {
 export const dbConnection = DatabaseConnection.getInstance();
 
 // Helper function to init database connection
-export const initializeDatabase = async (config: DatabaseConfig): Promise<boolean> => {
+export const initializeDatabase = async (config: PostgresConfig): Promise<boolean> => {
   return await dbConnection.connect(config);
 };
 
 // Example usage function
-export const connectToRealMongoDB = async () => {
-  const config = {
-    uri: 'mongodb://username:password@localhost:27017',
-    dbName: 'inventory_management',
-    options: {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    }
+export const connectToPostgreSQL = async () => {
+  const config: PostgresConfig = {
+    host: 'localhost',
+    port: 5432,
+    database: 'inventory_management',
+    user: 'postgres',
+    password: 'postgres',
+    ssl: false
   };
   
   const connected = await initializeDatabase(config);
   
   if (connected) {
-    console.log('Successfully connected to MongoDB');
+    console.log('Successfully connected to PostgreSQL');
     return true;
   } else {
-    console.error('Failed to connect to MongoDB:', dbConnection.error);
+    console.error('Failed to connect to PostgreSQL:', dbConnection.error);
     return false;
   }
 };
