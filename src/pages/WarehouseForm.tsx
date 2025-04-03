@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
@@ -19,7 +18,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Warehouse } from '../models/types';
-import { getWarehouse, createWarehouse, updateWarehouse } from '../services/mockData';
+import { mockMongoDB } from '../services/mockMongoDB';
 
 const warehouseSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
@@ -49,7 +48,7 @@ const WarehouseForm = () => {
       const fetchWarehouse = async () => {
         setIsLoading(true);
         try {
-          const data = await getWarehouse(id as string);
+          const data = await mockMongoDB.warehouses.findById(id as string);
           if (data) {
             form.reset({
               name: data.name,
@@ -76,13 +75,16 @@ const WarehouseForm = () => {
     
     try {
       if (isEditMode) {
-        await updateWarehouse(id as string, values);
+        await mockMongoDB.warehouses.updateOne(
+          { id: id as string },
+          values
+        );
         toast.success('Warehouse updated successfully');
       } else {
-        // Pass all required fields directly
-        await createWarehouse({
+        await mockMongoDB.warehouses.insertOne({
           name: values.name,
-          location: values.location
+          location: values.location,
+          created_at: new Date().toISOString()
         });
         toast.success('Warehouse created successfully');
       }
