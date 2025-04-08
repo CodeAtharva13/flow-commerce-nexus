@@ -1,21 +1,37 @@
 
-import { Collection, ObjectId, Filter } from 'mongodb';
 import { mongoDBConnection } from '../utils/mongodbConnection';
+import { browserMongoDB } from './browserMongoDB';
 import { toast } from 'sonner';
+
+// Check if running in browser environment
+const isBrowser = typeof window !== 'undefined';
 
 // MongoDB collection wrapper for type-safe operations
 export class MongoDBCollection<T extends { id?: string }> {
-  private collection: Collection<Omit<T, 'id'> & { _id?: ObjectId }>;
   private collectionName: string;
+  private browserCollection: any;
   
   constructor(collectionName: string) {
     this.collectionName = collectionName;
-    this.collection = mongoDBConnection.getCollection(collectionName);
+    
+    if (isBrowser) {
+      // In browser environment, use the browser implementation
+      this.browserCollection = (browserMongoDB as any)[collectionName];
+      
+      if (!this.browserCollection) {
+        console.error(`Browser MongoDB collection ${collectionName} not found`);
+        throw new Error(`Browser MongoDB collection ${collectionName} not found`);
+      }
+    }
   }
   
-  // Convert MongoDB _id to string id
+  // Convert MongoDB _id to string id (for Node.js environment)
   private toAppDocument(doc: any): T {
     if (!doc) return doc;
+    
+    if (isBrowser) {
+      return doc; // Browser implementation already handles this
+    }
     
     const { _id, ...rest } = doc;
     return {
@@ -24,45 +40,20 @@ export class MongoDBCollection<T extends { id?: string }> {
     } as T;
   }
   
-  // Convert app document to MongoDB document
-  private toMongoDocument(doc: Partial<T>): any {
-    if (!doc) return doc;
-    
-    const { id, ...rest } = doc;
-    const result: any = { ...rest };
-    
-    if (id) {
-      try {
-        result._id = new ObjectId(id);
-      } catch (err) {
-        // If id is not a valid ObjectId, use it as-is
-        result._id = id;
-      }
-    }
-    
-    return result;
-  }
-  
   // Find all documents
   async find(query: Partial<T> = {}): Promise<T[]> {
     console.log(`MongoDB: Finding documents in ${this.collectionName} with query:`, query);
     
     try {
-      const mongoQuery = this.toMongoDocument(query);
-      delete mongoQuery._id; // Remove _id from query if it exists
-      
-      // Add _id query if id exists in original query
-      if (query.id) {
-        try {
-          mongoQuery._id = new ObjectId(query.id);
-        } catch (err) {
-          // If id is not a valid ObjectId, use it as-is
-          mongoQuery._id = query.id;
-        }
+      if (isBrowser) {
+        return await this.browserCollection.find(query);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const mongoQuery = this.prepareMongoQuery(query);
+        const docs = await collection.find(mongoQuery).toArray();
+        return docs.map((doc: any) => this.toAppDocument(doc));
       }
-      
-      const docs = await this.collection.find(mongoQuery).toArray();
-      return docs.map(doc => this.toAppDocument(doc));
     } catch (err: any) {
       console.error(`Error finding documents in ${this.collectionName}:`, err);
       return [];
@@ -74,25 +65,35 @@ export class MongoDBCollection<T extends { id?: string }> {
     console.log(`MongoDB: Finding one document in ${this.collectionName} with query:`, query);
     
     try {
-      const mongoQuery = this.toMongoDocument(query);
-      delete mongoQuery._id; // Remove _id from query if it exists
-      
-      // Add _id query if id exists in original query
-      if (query.id) {
-        try {
-          mongoQuery._id = new ObjectId(query.id);
-        } catch (err) {
-          // If id is not a valid ObjectId, use it as-is
-          mongoQuery._id = query.id;
-        }
+      if (isBrowser) {
+        return await this.browserCollection.findOne(query);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const mongoQuery = this.prepareMongoQuery(query);
+        const doc = await collection.findOne(mongoQuery);
+        return doc ? this.toAppDocument(doc) : null;
       }
-      
-      const doc = await this.collection.findOne(mongoQuery as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
-      return doc ? this.toAppDocument(doc) : null;
     } catch (err: any) {
       console.error(`Error finding document in ${this.collectionName}:`, err);
       return null;
     }
+  }
+  
+  // Helper to prepare MongoDB queries
+  private prepareMongoQuery(query: Partial<T>): any {
+    // This is only used in Node.js environment
+    if (isBrowser) return query;
+    
+    const result: any = { ...query };
+    delete result.id;
+    
+    if (query.id) {
+      // In Node.js we would use ObjectId here
+      result._id = query.id;
+    }
+    
+    return result;
   }
   
   // Find by ID
@@ -100,16 +101,14 @@ export class MongoDBCollection<T extends { id?: string }> {
     console.log(`MongoDB: Finding document by ID ${id} in ${this.collectionName}`);
     
     try {
-      let objectId;
-      try {
-        objectId = new ObjectId(id);
-      } catch (err) {
-        // If id is not a valid ObjectId, use it as-is
-        objectId = id;
+      if (isBrowser) {
+        return await this.browserCollection.findById(id);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const doc = await collection.findOne({ _id: id });
+        return doc ? this.toAppDocument(doc) : null;
       }
-      
-      const doc = await this.collection.findOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
-      return doc ? this.toAppDocument(doc) : null;
     } catch (err: any) {
       console.error(`Error finding document by ID in ${this.collectionName}:`, err);
       return null;
@@ -121,22 +120,20 @@ export class MongoDBCollection<T extends { id?: string }> {
     console.log(`MongoDB: Inserting document into ${this.collectionName}:`, document);
     
     try {
-      const mongoDoc = this.toMongoDocument(document as Partial<T>);
-      delete mongoDoc._id; // Remove _id if it exists, let MongoDB generate it
-      
-      const result = await this.collection.insertOne(mongoDoc);
-      
-      if (!result.acknowledged) {
-        throw new Error('Insert operation not acknowledged');
+      if (isBrowser) {
+        return await this.browserCollection.insertOne(document);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const result = await collection.insertOne(document);
+        const newDoc = await collection.findOne({ _id: result.insertedId });
+        
+        if (!newDoc) {
+          throw new Error('Could not find newly inserted document');
+        }
+        
+        return this.toAppDocument(newDoc);
       }
-      
-      const newDoc = await this.collection.findOne({ _id: result.insertedId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
-      
-      if (!newDoc) {
-        throw new Error('Could not find newly inserted document');
-      }
-      
-      return this.toAppDocument(newDoc);
     } catch (err: any) {
       console.error(`Error inserting document into ${this.collectionName}:`, err);
       throw err;
@@ -148,28 +145,23 @@ export class MongoDBCollection<T extends { id?: string }> {
     console.log(`MongoDB: Updating document in ${this.collectionName} with filter:`, filter);
     
     try {
-      let objectId;
-      try {
-        objectId = new ObjectId(filter.id);
-      } catch (err) {
-        // If id is not a valid ObjectId, use it as-is
-        objectId = filter.id;
+      if (isBrowser) {
+        return await this.browserCollection.updateOne(filter, update);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const result = await collection.updateOne(
+          { _id: filter.id },
+          { $set: update }
+        );
+        
+        if (!result.acknowledged) {
+          throw new Error('Update operation not acknowledged');
+        }
+        
+        const updatedDoc = await collection.findOne({ _id: filter.id });
+        return updatedDoc ? this.toAppDocument(updatedDoc) : null;
       }
-      
-      const mongoUpdate = this.toMongoDocument(update);
-      delete mongoUpdate._id; // Remove _id from update if it exists
-      
-      const result = await this.collection.updateOne(
-        { _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>,
-        { $set: mongoUpdate }
-      );
-      
-      if (!result.acknowledged) {
-        throw new Error('Update operation not acknowledged');
-      }
-      
-      const updatedDoc = await this.collection.findOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
-      return updatedDoc ? this.toAppDocument(updatedDoc) : null;
     } catch (err: any) {
       console.error(`Error updating document in ${this.collectionName}:`, err);
       throw err;
@@ -181,28 +173,25 @@ export class MongoDBCollection<T extends { id?: string }> {
     console.log(`MongoDB: Deleting document from ${this.collectionName} with filter:`, filter);
     
     try {
-      let objectId;
-      try {
-        objectId = new ObjectId(filter.id);
-      } catch (err) {
-        // If id is not a valid ObjectId, use it as-is
-        objectId = filter.id;
+      if (isBrowser) {
+        return await this.browserCollection.deleteOne(filter);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const docToDelete = await collection.findOne({ _id: filter.id });
+        
+        if (!docToDelete) {
+          return null;
+        }
+        
+        const result = await collection.deleteOne({ _id: filter.id });
+        
+        if (!result.acknowledged) {
+          throw new Error('Delete operation not acknowledged');
+        }
+        
+        return this.toAppDocument(docToDelete);
       }
-      
-      // First, find the document to return it after deletion
-      const docToDelete = await this.collection.findOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
-      
-      if (!docToDelete) {
-        return null;
-      }
-      
-      const result = await this.collection.deleteOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
-      
-      if (!result.acknowledged) {
-        throw new Error('Delete operation not acknowledged');
-      }
-      
-      return this.toAppDocument(docToDelete);
     } catch (err: any) {
       console.error(`Error deleting document from ${this.collectionName}:`, err);
       throw err;
@@ -214,20 +203,14 @@ export class MongoDBCollection<T extends { id?: string }> {
     console.log(`MongoDB: Count of documents in ${this.collectionName} with query:`, query);
     
     try {
-      const mongoQuery = this.toMongoDocument(query);
-      delete mongoQuery._id; // Remove _id from query if it exists
-      
-      // Add _id query if id exists in original query
-      if (query.id) {
-        try {
-          mongoQuery._id = new ObjectId(query.id);
-        } catch (err) {
-          // If id is not a valid ObjectId, use it as-is
-          mongoQuery._id = query.id;
-        }
+      if (isBrowser) {
+        return await this.browserCollection.count(query);
+      } else {
+        // This code won't run in browser
+        const collection = mongoDBConnection.getCollection(this.collectionName);
+        const mongoQuery = this.prepareMongoQuery(query);
+        return await collection.countDocuments(mongoQuery);
       }
-      
-      return await this.collection.countDocuments(mongoQuery as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
     } catch (err: any) {
       console.error(`Error counting documents in ${this.collectionName}:`, err);
       return 0;
