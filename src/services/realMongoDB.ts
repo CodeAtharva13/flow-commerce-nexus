@@ -1,5 +1,5 @@
 
-import { Collection, ObjectId } from 'mongodb';
+import { Collection, ObjectId, Filter } from 'mongodb';
 import { mongoDBConnection } from '../utils/mongodbConnection';
 import { toast } from 'sonner';
 
@@ -87,7 +87,7 @@ export class MongoDBCollection<T extends { id?: string }> {
         }
       }
       
-      const doc = await this.collection.findOne(mongoQuery);
+      const doc = await this.collection.findOne(mongoQuery as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
       return doc ? this.toAppDocument(doc) : null;
     } catch (err: any) {
       console.error(`Error finding document in ${this.collectionName}:`, err);
@@ -108,7 +108,7 @@ export class MongoDBCollection<T extends { id?: string }> {
         objectId = id;
       }
       
-      const doc = await this.collection.findOne({ _id: objectId });
+      const doc = await this.collection.findOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
       return doc ? this.toAppDocument(doc) : null;
     } catch (err: any) {
       console.error(`Error finding document by ID in ${this.collectionName}:`, err);
@@ -130,7 +130,7 @@ export class MongoDBCollection<T extends { id?: string }> {
         throw new Error('Insert operation not acknowledged');
       }
       
-      const newDoc = await this.collection.findOne({ _id: result.insertedId });
+      const newDoc = await this.collection.findOne({ _id: result.insertedId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
       
       if (!newDoc) {
         throw new Error('Could not find newly inserted document');
@@ -160,7 +160,7 @@ export class MongoDBCollection<T extends { id?: string }> {
       delete mongoUpdate._id; // Remove _id from update if it exists
       
       const result = await this.collection.updateOne(
-        { _id: objectId },
+        { _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>,
         { $set: mongoUpdate }
       );
       
@@ -168,7 +168,7 @@ export class MongoDBCollection<T extends { id?: string }> {
         throw new Error('Update operation not acknowledged');
       }
       
-      const updatedDoc = await this.collection.findOne({ _id: objectId });
+      const updatedDoc = await this.collection.findOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
       return updatedDoc ? this.toAppDocument(updatedDoc) : null;
     } catch (err: any) {
       console.error(`Error updating document in ${this.collectionName}:`, err);
@@ -190,13 +190,13 @@ export class MongoDBCollection<T extends { id?: string }> {
       }
       
       // First, find the document to return it after deletion
-      const docToDelete = await this.collection.findOne({ _id: objectId });
+      const docToDelete = await this.collection.findOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
       
       if (!docToDelete) {
         return null;
       }
       
-      const result = await this.collection.deleteOne({ _id: objectId });
+      const result = await this.collection.deleteOne({ _id: objectId } as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
       
       if (!result.acknowledged) {
         throw new Error('Delete operation not acknowledged');
@@ -227,7 +227,7 @@ export class MongoDBCollection<T extends { id?: string }> {
         }
       }
       
-      return await this.collection.countDocuments(mongoQuery);
+      return await this.collection.countDocuments(mongoQuery as Filter<Omit<T, 'id'> & { _id?: ObjectId }>);
     } catch (err: any) {
       console.error(`Error counting documents in ${this.collectionName}:`, err);
       return 0;

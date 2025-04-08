@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -40,13 +39,13 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
 import { Warehouse as WarehouseType } from '../models/types';
-import { getWarehouses, deleteWarehouse } from '../services/mockData';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useRealMongoCollection } from '../hooks/useRealMongoCollection';
 
 const Warehouses = () => {
+  const { findAll, remove, isLoading } = useRealMongoCollection<WarehouseType>('warehouses');
   const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [warehouseToDelete, setWarehouseToDelete] = useState<WarehouseType | null>(null);
@@ -54,17 +53,15 @@ const Warehouses = () => {
   useEffect(() => {
     const fetchWarehouses = async () => {
       try {
-        const data = await getWarehouses();
+        const data = await findAll();
         setWarehouses(data);
       } catch (error) {
         toast.error('Failed to fetch warehouses');
-      } finally {
-        setIsLoading(false);
       }
     };
 
     fetchWarehouses();
-  }, []);
+  }, [findAll]);
 
   const handleDeleteClick = (warehouse: WarehouseType) => {
     setWarehouseToDelete(warehouse);
@@ -75,7 +72,7 @@ const Warehouses = () => {
     if (!warehouseToDelete) return;
     
     try {
-      await deleteWarehouse(warehouseToDelete.id);
+      await remove(warehouseToDelete.id);
       setWarehouses(warehouses.filter(w => w.id !== warehouseToDelete.id));
       toast.success(`Warehouse ${warehouseToDelete.name} deleted successfully`);
     } catch (error) {

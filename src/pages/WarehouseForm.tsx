@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
@@ -18,7 +19,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Warehouse } from '../models/types';
-import { mockMongoDB } from '../services/mockMongoDB';
+import { useRealMongoCollection } from '../hooks/useRealMongoCollection';
 
 const warehouseSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters' }),
@@ -30,10 +31,12 @@ type WarehouseFormValues = z.infer<typeof warehouseSchema>;
 const WarehouseForm = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const isEditMode = id !== undefined && id !== 'new';
+  
+  // Use the real MongoDB collection hook
+  const { findById, create, update, isLoading } = useRealMongoCollection<Warehouse>('warehouses');
 
   const form = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseSchema),
@@ -46,9 +49,8 @@ const WarehouseForm = () => {
   useEffect(() => {
     if (isEditMode) {
       const fetchWarehouse = async () => {
-        setIsLoading(true);
         try {
-          const data = await mockMongoDB.warehouses.findById(id as string);
+          const data = await findById(id as string);
           if (data) {
             form.reset({
               name: data.name,
@@ -61,27 +63,22 @@ const WarehouseForm = () => {
         } catch (error) {
           toast.error('Failed to fetch warehouse details');
           navigate('/warehouses');
-        } finally {
-          setIsLoading(false);
         }
       };
 
       fetchWarehouse();
     }
-  }, [id, isEditMode, navigate, form]);
+  }, [id, isEditMode, navigate, form, findById]);
 
   const onSubmit = async (values: WarehouseFormValues) => {
     setIsSaving(true);
     
     try {
       if (isEditMode) {
-        await mockMongoDB.warehouses.updateOne(
-          { id: id as string },
-          values
-        );
+        await update(id as string, values);
         toast.success('Warehouse updated successfully');
       } else {
-        await mockMongoDB.warehouses.insertOne({
+        await create({
           name: values.name,
           location: values.location,
           created_at: new Date().toISOString()
