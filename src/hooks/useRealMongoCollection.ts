@@ -1,21 +1,21 @@
 
 import { useState } from 'react';
-import { postgresTables } from '../services/postgresDB';
+import { realMongoDB } from '../services/realMongoDB';
 import { toast } from 'sonner';
 
-// This hook provides a convenient way to work with PostgreSQL tables
-export function usePostgresCollection<T extends { id: string }>(tableName: keyof typeof postgresTables) {
+// This hook provides a convenient way to work with real MongoDB collections
+export function useRealMongoCollection<T extends { id: string }>(collectionName: keyof typeof realMongoDB) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   
   // Type assertion to get the correct collection
-  const table = postgresTables[tableName];
+  const collection = realMongoDB[collectionName] as any;
   
   const findAll = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await table.findAll();
+      const data = await collection.find();
       return data as T[];
     } catch (err: any) {
       setError(err);
@@ -30,7 +30,7 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      const data = await table.findById(id);
+      const data = await collection.findById(id);
       return data as T | null;
     } catch (err: any) {
       setError(err);
@@ -45,7 +45,7 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      const data = await table.findOne(query);
+      const data = await collection.findOne(query);
       return data as T | null;
     } catch (err: any) {
       setError(err);
@@ -60,7 +60,7 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      const data = await table.find(query);
+      const data = await collection.find(query);
       return data as T[];
     } catch (err: any) {
       setError(err);
@@ -75,7 +75,7 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      const newDoc = await table.insertOne(data);
+      const newDoc = await collection.insertOne(data);
       toast.success('Item created successfully');
       return newDoc as T;
     } catch (err: any) {
@@ -91,9 +91,8 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      // Fix TypeScript error by ensuring id is a string in the filter object
-      const filter = { id } as { id: string };
-      const updated = await table.updateOne(filter, data);
+      const filter = { id };
+      const updated = await collection.updateOne(filter, data);
       toast.success('Item updated successfully');
       return updated as T;
     } catch (err: any) {
@@ -109,9 +108,8 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      // Fix TypeScript error by ensuring id is a string in the filter object
-      const filter = { id } as { id: string };
-      const deleted = await table.deleteOne(filter);
+      const filter = { id };
+      const deleted = await collection.deleteOne(filter);
       toast.success('Item deleted successfully');
       return deleted as T;
     } catch (err: any) {
@@ -127,7 +125,7 @@ export function usePostgresCollection<T extends { id: string }>(tableName: keyof
     setIsLoading(true);
     setError(null);
     try {
-      const count = await table.count(query);
+      const count = await collection.count(query);
       return count;
     } catch (err: any) {
       setError(err);
